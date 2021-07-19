@@ -1,8 +1,7 @@
 const mongoose = require("mongoose");
 const NotificationSchema = require("../models/Notification.model");
-
+mongoose.set("useFindAndModify", false);
 exports.saveNotification = function saveNotification(notification) {
-  // console.log(notification, "notification receive from server");
   const notificationInstance = new NotificationSchema({
     _id: mongoose.Types.ObjectId(),
     fromUser: notification.fromUser,
@@ -27,16 +26,23 @@ exports.fetchNotificationList = async function fetchNotificationList(username) {
     toUser: username,
     isReaded: false,
   });
-  console.log(notificationList, "notification list");
-  return notificationList;
+  let result = notificationList.map(notification =>
+    notification.isGroup ? notification.groupName : notification.fromUser
+  );
+  console.log(result, "result fetch");
+  result = result.filter(function (elem, index, self) {
+    return index === self.indexOf(elem) && elem;
+  });
+  return result;
 };
 
 exports.turnOffNotification = async function turnOffNotification(notification) {
-  let notificationList = await NotificationSchema.findOneAndUpdate(
+  let notificationList = await NotificationSchema.updateMany(
     {
-      isReaded: false,
-      fromUser: notification.fromUser,
-      toUser: notification.toUser,
+      $or: [
+        { fromUser: notification.fromUser, toUser: notification.toUser },
+        { groupName: notification.fromUser, toUser: notification.toUser },
+      ],
     },
     { isReaded: true },
     {

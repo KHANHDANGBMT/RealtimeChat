@@ -1,4 +1,4 @@
-import { Button, Form, Modal } from "react-bootstrap";
+import { Button, Modal } from "react-bootstrap";
 import React from "react";
 import "./chat.css";
 import { getToken, getUsername } from "../../utils/user";
@@ -18,7 +18,6 @@ class Chat extends React.Component {
       currentUserChat: {},
       currentMessage: [],
       username: getUsername(),
-      // unReadMessage: [],
       showModelGroup: false,
       memberAddGroup: [],
 
@@ -32,7 +31,9 @@ class Chat extends React.Component {
       isGroupChat: false,
       notificationList: [],
     };
-    this.socket = io(`localhost:5000?username=${getUsername()}`);
+    this.socket = io(
+      `${process.env.REACT_APP_BASEURL}?username=${getUsername()}`
+    );
   }
 
   componentWillUnmount() {
@@ -43,7 +44,6 @@ class Chat extends React.Component {
     this.socket.emit("userList");
     this.socket.emit("groupList", { username: getUsername() });
     this.contentChat.current.scrollTop = this.contentChat.current.scrollHeight;
-
     this.socket.on("fetchMessageList", response => {
       if (
         (response.length &&
@@ -60,9 +60,9 @@ class Chat extends React.Component {
         );
       } else {
         let userCheck =
-          response[0].fromUser === getUsername()
-            ? response[0].toUser
-            : response[0].fromUser;
+          response[0]?.fromUser === getUsername()
+            ? response[0]?.toUser
+            : response[0]?.fromUser;
         this.socket.emit("createNotificationUser", {
           fromUser: userCheck,
           toUser: getUsername(),
@@ -82,7 +82,11 @@ class Chat extends React.Component {
           currentUserChat: userList.length ? userList[0] : "",
         },
         () => {
-          this.handleClickUserChat(userList.length ? userList[0] : "");
+          console.log("after render");
+          if (userList.length) {
+            console.log(response);
+            this.handleClickUserChat(userList[0]);
+          }
         }
       );
     });
@@ -101,6 +105,7 @@ class Chat extends React.Component {
           this.scrollBottom();
         });
       } else {
+        console.log(response.listMessage, "list message fetch-------");
         this.socket.emit("createNotification", {
           fromUser: response.data.userSend,
           toUser: getUsername(),
@@ -115,8 +120,10 @@ class Chat extends React.Component {
     });
 
     this.socket.on("fetchNotificationList", response => {
-      console.log(response.notificationList, "notification response");
-      this.setState({ notificationList: response.notificationList });
+      console.log(response, "response from server");
+      if (response.userSend !== getUsername()) {
+        this.setState({ notificationList: response.notificationList });
+      }
     });
   }
 
@@ -144,9 +151,10 @@ class Chat extends React.Component {
         isGroupChat: true,
       });
     } else {
+      console.log(this.state.currentUserChat, "ppsend");
       await this.socket.emit("sendMessage", {
         message: this.state.message,
-        fromUser: this.state.username,
+        fromUser: getUsername(),
         toUser: this.state.currentUserChat.username,
         toUserId: this.state.currentUserChat._id,
         date: new Date().getTime(),
@@ -158,30 +166,33 @@ class Chat extends React.Component {
   handleClickUserChat = async user => {
     if (user.groupName) {
       await this.socket.emit("getMessageGroup", user);
-      this.state.notificationList.forEach(notification => {
-        if (notification.groupName === user.groupName) {
-          this.socket.emit("turnOffNotification", { notification });
-        }
-      });
-      this.setState({ currentUserChat: user });
+      if (this.state.notificationList.indexOf(user.groupName) > -1) {
+        this.socket.emit("turnOffNotification", {
+          userTurnOff: getUsername(),
+          turnOffUser: user.groupName,
+        });
+      }
+      this.setState({ currentUserChat: user, message: "" });
     } else {
       console.log("not group");
+      console.log(user);
       if (this.state.currentUserChat.username + "" !== user.username) {
         await this.setState({
           currentUserChat: user,
           listMessage: [],
-        });
-        await this.state.notificationList.forEach(notification => {
-          if (notification.fromUser === user.username) {
-            this.socket.emit("turnOffNotification", { notification });
-          }
-        });
-        await this.socket.emit("getMessage", {
-          fromUser: getUsername(),
-          toUser: user.username,
           message: "",
         });
+        if (this.state.notificationList.indexOf(user.username) > -1) {
+          this.socket.emit("turnOffNotification", {
+            userTurnOff: getUsername(),
+            turnOffUser: user.username,
+          });
+        }
       }
+      this.socket.emit("getMessage", {
+        fromUser: getUsername(),
+        toUser: user.username,
+      });
     }
   };
 
@@ -271,31 +282,19 @@ class Chat extends React.Component {
 
     // prepare list user
     let listChat;
-    let unreadUser;
     if (this.state.userList.length) {
-      console.log(this.state.userList, "userList cua list chat");
-      console.log(this.state.notificationList, "notification list");
       listChat = this.state.userList.map((user, index) => {
-        if (this.state.notificationList.length) {
-          this.state.notificationList.forEach(notification => {
-            let userCheck =
-              notification.fromUser === getUsername()
-                ? notification.toUser
-                : notification.fromUser;
-            if (userCheck === user.username && !notification.isGroup) {
-              unreadUser = (
-                <div className="notification" style={{ color: "red" }}></div>
-              );
-            }
-          });
+        let unreadUser = "";
+        if (this.state.notificationList.indexOf(user.username) > -1) {
+          unreadUser = <div className="notification"></div>;
         }
+
         return (
           <div
+            key={index + user}
             className="list-group-item list-group-item-action border-0 wrap-list"
             onClick={() => this.handleClickUserChat(user)}
-            key={index}
           >
-            {/* {checkUnreadMessage} */}
             {unreadUser}
             <div className="d-flex align-items-start">
               <img
@@ -308,7 +307,7 @@ class Chat extends React.Component {
               <div className="flex-grow-1 ml-3">
                 {user.username}
                 <div className="small">
-                  <span className="fas fa-circle chat-online"></span> Online
+                  <span className="fas fa-circle chat-online"></span>
                 </div>
               </div>
             </div>
@@ -317,29 +316,20 @@ class Chat extends React.Component {
       });
     }
     let listGroup;
+
     if (this.state.listGroup.length) {
       listGroup = this.state.listGroup.map((group, index) => {
         let unreadMessage;
-        if (this.state.notificationList.length) {
-          this.state.notificationList.map(notification => {
-            if (
-              notification.groupName === group.groupName &&
-              group.groupName !== this.state.currentUserChat.groupName &&
-              notification.isGroup
-            ) {
-              unreadMessage = (
-                <div className="notification" style={{ color: "red" }}></div>
-              );
-            }
-          });
+        if (this.state.notificationList.indexOf(group.groupName) > -1) {
+          unreadMessage = <div className="notification"></div>;
         }
+
         return (
           <div
             className="list-group-item list-group-item-action border-0 wrap-list"
             onClick={() => this.handleClickUserChat(group)}
-            key={index}
+            key={index + group}
           >
-            {/* {checkUnreadMessage} */}
             {unreadMessage}
             <div className="d-flex align-items-start">
               <img
@@ -397,7 +387,7 @@ class Chat extends React.Component {
             <div className="chat-message-left pb-4" key={index}>
               <div>
                 <img
-                  src="https://bootdey.com/img/Content/avatar/avatar3.png"
+                  src="https://bootdey.com/img/Content/avatar/avatar5.png"
                   className="rounded-circle mr-1"
                   alt="Sharon Lessman"
                   width="40"
@@ -418,7 +408,7 @@ class Chat extends React.Component {
       });
     } else {
       showListMessage = [
-        <div>
+        <div key="default">
           <p style={{ textAlign: "center" }}>Start chatting now... 😀</p>
         </div>,
       ];
@@ -531,7 +521,7 @@ class Chat extends React.Component {
                   <div className="d-flex align-items-center py-1">
                     <div className="position-relative">
                       <img
-                        src="https://bootdey.com/img/Content/avatar/avatar3.png"
+                        src="https://bootdey.com/img/Content/avatar/avatar5.png"
                         className="rounded-circle mr-1"
                         alt="Sharon Lessman"
                         width="40"
@@ -545,7 +535,7 @@ class Chat extends React.Component {
                           : this.state.currentUserChat?.groupName}
                       </strong>
                       <div className="text-muted small">
-                        <em>Typing...</em>
+                        {/* <em>Typing...</em> */}
                       </div>
                     </div>
                     <div>

@@ -118,6 +118,7 @@ class Register extends React.Component {
           >
             Register
           </button>
+          <a href="/login">Back to Login</a>
         </form>
       </div>
     );

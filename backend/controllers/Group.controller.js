@@ -45,8 +45,6 @@ exports.addUser = async function addUser(usernameJoin, groupId) {
 };
 
 exports.userOfList = async function userOfList(groupName) {
-  console.log(groupName, "groupname");
   let userOfList = await GroupSchema.find({ groupName: groupName });
-  console.log(userOfList, "user of  list");
   return userOfList[0].memberList;
 };

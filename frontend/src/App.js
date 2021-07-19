@@ -8,7 +8,6 @@ import Background from "./components/Background";
 import Register from "./components/Register";
 import { getToken } from "./utils/user";
 import { ToastContainer } from "react-toastify";
-import Chats from "./components/Chats";
 
 class App extends React.Component {
   constructor(props) {
@@ -66,11 +65,6 @@ class App extends React.Component {
                 <Chat token={this.state.token} history={this.props.history} />
               </Background>
             </Route>
-            {/* <Route path="/chats" exact>
-              <Background>
-                <Chats token={this.state.token} history={this.props.history} />
-              </Background>
-            </Route> */}
             <Route path="/register" exact>
               <Background>
                 <Register history={this.props.history} setToken={this.token} />

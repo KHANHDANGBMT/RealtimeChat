@@ -64,12 +64,10 @@ app.use(express.static(path.join(__dirname, "public")));
 app.use("/", indexRouter);
 
 // socket
-let userOnline = [];
 io.on("connection", async function (socket) {
-  console.log(socket.id, "===== id connected");
   //  save socket when user login
   await user.saveSocketId(socket.handshake.query.username, socket.id);
-  // join socket to room
+
   let listGroup = await group.fetchGroupList(socket.handshake.query.username);
   await listGroup.forEach(group => {
     socket.join(group.groupName);
@@ -90,6 +88,7 @@ io.on("connection", async function (socket) {
   });
 
   socket.on("getMessage", async data => {
+    console.log(data, "get Message");
     let mySocket = await user.userListSocket(data.fromUser);
     let listMessage = await message.getMessage(data.fromUser, data.toUser);
     if (mySocket) {
@@ -107,6 +106,13 @@ io.on("connection", async function (socket) {
       messageSend?.fromUser,
       messageSend?.toUser
     );
+    await notification.saveNotification({
+      fromUser: messageSend.fromUser,
+      toUser: messageSend.toUser,
+      isGroup: false,
+      notificationNumber: 1,
+      groupName: "",
+    });
     if (isSavedMessage && socketReceiver && socketSender) {
       socketReceiver.forEach(socketId => {
         io.to(socketId).emit("fetchMessageList", listMessage);
@@ -147,7 +153,6 @@ io.on("connection", async function (socket) {
   });
 
   socket.on("sendMessageGroup", async data => {
-    console.log(data, "sendMessageGroup");
     await message.saveMessage({
       fromUser: data.userSend,
       toUser: data.groupName,
@@ -156,6 +161,30 @@ io.on("connection", async function (socket) {
       toUserId: data._id,
       isGroup: true,
     });
+    await data.memberList.forEach(async username => {
+      if (username !== data.userSend) {
+        let notificationSave = await notification.saveNotification({
+          fromUser: data.userSend,
+          toUser: username,
+          isGroup: true,
+          notificationNumber: 1,
+          groupName: data.groupName,
+        });
+        if (notificationSave) {
+          let notificationList = await notification.fetchNotificationList(
+            username
+          );
+          let socketList = await user.userListSocket(username);
+          await socketList.forEach(socketId => {
+            io.to(socketId).emit("fetchNotificationList", {
+              userSend: data.fromUser,
+              notificationList,
+            });
+          });
+        }
+      }
+    });
+
     io.to(data.groupName).emit("sendMessageGroup", data);
   });
 
@@ -165,39 +194,17 @@ io.on("connection", async function (socket) {
   });
 
   socket.on("createNotification", async data => {
-    console.log(data, "data notification");
-    let notificationSave = await notification.saveNotification({
-      fromUser: data.fromUser,
-      toUser: data.toUser,
-      isGroup: data.isGroup,
-      notificationNumber: 1,
-      groupName: data.groupName,
-    });
     let notificationList = await notification.fetchNotificationList(
       data.toUser
     );
-    if (notificationSave) {
-      let userOfList = await group.userOfList(data.groupName);
-      console.log(userOfList, "userOfList");
-      userOfList.forEach(async username => {
-        let socketList = await user.userListSocket(username);
-        console.log(socketList, username, "Username and socketlist");
-        socketList.forEach(socketId => {
-          io.to(socketId).emit("fetchNotificationList", {
-            userSend: data.fromUser,
-            notificationList,
-          });
-        });
-      });
-      // io.to(data.groupName).emit("fetchNotificationList", {
-      //   userSend: data.fromUser,
-      //   notificationList,
-      // });
-    }
+
+    io.to(data.groupName).emit("fetchNotificationList", {
+      userSend: data.fromUser,
+      notificationList,
+    });
   });
 
   socket.on("createNotificationUser", async data => {
-    console.log(data, "createNotificationUser");
     let notificationSave = await notification.saveNotification({
       fromUser: data.fromUser,
       toUser: data.toUser,
@@ -210,7 +217,6 @@ io.on("connection", async function (socket) {
     );
 
     let socketSender = await user.userListSocket(data.toUser);
-    console.log(socketSender, "socketsender");
     if (socketSender.length && notificationSave) {
       socketSender.forEach(socketId => {
         io.to(socketId).emit("fetchNotificationList", {
@@ -225,20 +231,23 @@ io.on("connection", async function (socket) {
     let notificationList = await notification.fetchNotificationList(
       data.username
     );
-    console.log(notificationList, "fetchNotificationList");
+
     io.to(socket.id).emit("fetchNotificationList", {
       notificationList,
     });
   });
 
   socket.on("turnOffNotification", async data => {
-    let result = await notification.turnOffNotification(data.notification);
+    let result = await notification.turnOffNotification({
+      fromUser: data.turnOffUser,
+      toUser: data.userTurnOff,
+    });
 
     let notificationList = await notification.fetchNotificationList(
-      data.notification.toUser
+      data.userTurnOff
     );
-    console.log(notificationList, "update");
-    let socketSender = await user.userListSocket(data.notification.toUser);
+
+    let socketSender = await user.userListSocket(data.userTurnOff);
     if (socketSender.length) {
       socketSender.forEach(socketId => {
         io.to(socketId).emit("fetchNotificationList", {

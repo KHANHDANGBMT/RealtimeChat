@@ -4,7 +4,6 @@ const _ = require("lodash");
 const jwt = require("jsonwebtoken");
 
 exports.createUser = function createUser(req, res) {
-  // console.log(req.body);/
   const user = new UserSchema({
     _id: mongoose.Types.ObjectId(),
     username: req.body.username,
@@ -80,25 +79,32 @@ exports.saveSocketId = async function saveSocketId(username, socketId) {
         listSocket[index].save();
       }
     });
-    // console.log(listSocket);
   } else {
     return false;
   }
 };
 
 exports.removeSocketId = async function removeSocketId(socketId) {
-  let listSocket = await UserSchema.find();
-  // console.log(listSocket, "origin");
-  listSocket.forEach(async (user, index) => {
-    if (user.listSocketId.indexOf(socketId) > -1) {
-      listSocket[index].listSocketId = user.listSocketId.splice(
-        user.listSocketId.indexOf(socketId),
-        1
-      );
-      await listSocket[index].save();
-    }
-  });
-  console.log(listSocket, "list socket rm id");
+  // let listSocket = await UserSchema.find();
+  await UserSchema.updateMany(
+    {},
+    {
+      $pull: {
+        listSocketId: { $in: [socketId] },
+      },
+    },
+    { multi: true }
+  );
+  // listSocket.forEach(async (user, index) => {
+  //   if (user.listSocketId.indexOf(socketId) > -1) {
+  //     listSocket[index].listSocketId = user.listSocketId.splice(
+  //       user.listSocketId.indexOf(socketId),
+  //       1
+  //     );
+  //     await listSocket[index].update({}, {});
+  //   }
+  // });
+  // console.log(listSocket, "list socket rm id");
 };
 
 exports.userListSocket = async function userListSocket(username) {
